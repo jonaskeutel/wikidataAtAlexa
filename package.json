@@ -1,0 +1,11 @@
+{
+  "name": "wikidata",
+  "version": "1.0.0",
+  "description": "Natarual Language Answering System using Wikidata",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "Jonas Keutel",
+  "license": "ISC"
+}
