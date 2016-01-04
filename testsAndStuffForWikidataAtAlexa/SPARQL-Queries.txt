@@ -1,0 +1,49 @@
+-------------------- Wer ist head of government von ***? -------------------- 
+	PREFIX wd: <http://www.wikidata.org/entity/> 
+	PREFIX p: <http://www.wikidata.org/prop/>
+	PREFIX q: <http://www.wikidata.org/prop/qualifier/>
+	PREFIX v: <http://www.wikidata.org/prop/statement/>
+
+	SELECT DISTINCT ?headOfGovernment WHERE {
+	  wd:Q*** p:P6 ?statement .
+	  ?statement v:P6 ?headOfGovernment .           # ... that has the value ?headOfGovernment
+	  FILTER NOT EXISTS { ?statement q:P582 ?x }  # ... but the statement has no P582 (end date) qualifier
+	 }
+
+
+-------------------- Wer hat am ... Geburtstag? -------------------- 
+	PREFIX wikibase: <http://wikiba.se/ontology#>
+	PREFIX wd: <http://www.wikidata.org/entity/> 
+	PREFIX wdt: <http://www.wikidata.org/prop/direct/>
+	PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+
+	SELECT ?h ?d WHERE {
+	   ?h wdt:P31 wd:Q5 .
+	   ?h wdt:P569 "1961-08-04T00:00:00Z"^^xsd:dateTime .
+	   OPTIONAL {?h wdt:P570 ?d }
+	 } LIMIT 100
+
+-------------------- die zehn größten Städte eines Staates oder Landes (funktioniert nicht) -------------------- 
+	PREFIX wikibase: <http://wikiba.se/ontology#>
+	PREFIX wd: <http://www.wikidata.org/entity/> 
+	PREFIX wdt: <http://www.wikidata.org/prop/direct/>
+	PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+	PREFIX p: <http://www.wikidata.org/prop/>
+	PREFIX q: <http://www.wikidata.org/prop/qualifier/>
+	PREFIX v: <http://www.wikidata.org/prop/statement/>
+
+	SELECT DISTINCT ?city ?cityLabel WHERE {
+	  ?city wdt:P31/wdt:P279* wd:Q515 .  # find instances of subclasses of city
+	  #?city wdt:P31 wd:Q515 .  # find instances of subclasses of city
+	  ?city p:P131 ?statement .          # with a P131 (located in the administratie territorial entity) statement
+	  ?statement v:P131 wd:Q99 .           # ... that lies in California
+	  #FILTER NOT EXISTS { ?statement q:P582 ?x }  # ... but the statement has no P582 (end date) qualifier
+	 
+	  # Now select the population value of the ?city
+	  # (wdt: properties use only statements of "preferred" rank if any, usually meaning "current population")
+	  ?city wdt:P1082 ?population .
+	  # Optionally, find English labels for city and mayor:
+	  SERVICE wikibase:label {
+	    bd:serviceParam wikibase:language "en" .
+	  }
+	 } ORDER BY DESC(?population) LIMIT 10
