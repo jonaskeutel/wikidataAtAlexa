@@ -5,14 +5,13 @@ var client = new Client();
 var StringDecoder = require('string_decoder').StringDecoder;
 var decoder = new StringDecoder('utf8');
 
-
-
+// Constants
 var WHO_IS_LEADING_QUERY = "PREFIX wd: <http://www.wikidata.org/entity/> " +
             "PREFIX p: <http://www.wikidata.org/prop/> " +
             "PREFIX q: <http://www.wikidata.org/prop/qualifier/> " +
             "PREFIX v: <http://www.wikidata.org/prop/statement/> " +
             "SELECT DISTINCT ?headOfGovernment WHERE { " +
-            "wd:??? p:P6 ?statement . " +
+            "wd:[ITEM_ID] p:P6 ?statement . " +
             "?statement v:P6 ?headOfGovernment . " +
             "FILTER NOT EXISTS { ?statement q:P582 ?x } " +
             "}";
@@ -90,10 +89,8 @@ function onIntent(intentRequest, session, callback) {
         intentName = intentRequest.intent.name;
 
     // Dispatch to your skill's intent handlers
-    if ("BirthdateIntent" === intentName) {
-        getBirthdate(intent, session, callback);
-    } else if ("WhoIsLeadingIntent" === intentName) {
-        whoIsLeading(callback);
+    if ("WhoIsLeadingIntent" === intentName) {
+        whoIsLeading(intent, session, callback);
     } else if ("HelpIntent" === intentName) {
         getWelcomeResponse(callback);
     } else {
@@ -143,84 +140,37 @@ function whoIsLeading(intent, session, callback) {
     }
 
     var name = nameSlot.value;
-    getWikidataId(name, doWhoIsLeadingQuery);
-}
-
-//TODO: FIX HOLE METHOD
-function getBirthdate(intent, session, callback) {
-    var cardTitle = intent.name;
-    var nameSlot = intent.slots.Name;
-    var repromptText = "";
-    var sessionAttributes = {};
-    var shouldEndSession = false;
-    var speechOutput = "";
-
-    if (nameSlot) {
-        var name = nameSlot.value;
-
-        var id = result.results[0].id;
-        var label = result.results[0].label;
-        wikidataSearch.getEntities([id], true, function(result, err) {
-            var claims = result.entities[0].claims;
-            var dateOfBirth;
-            for (var i = 0; i < claims.length; i++) {
-                if (claims[i].property === "place of birth") {
-                    dateOfBirth = claims[i].value;
-                    break;
-                }
-            }
-            buildBirthdateResponse(sessionAttributes, cardTitle, label, dateOfBirth, callback);
-        });
-    } else {
-        speechOutput = "I didn't get the name of the person. Please try again";
-        repromptText = "You can ask: When is the birthdate of Barack Obama";
-        console.log(speechOutput);
-    }
+    getWikidataId(name, sessionAttributes, doWhoIsLeadingQuery, callback);
 }
 
 // --------------- Custom functions -----------------------
 
 
-function getWikidataId(name, callback) {
-    wikidataSearch.set('search', 'name');
+function getWikidataId(name, sessionAttributes, callbackQuery, callback) {
+    wikidataSearch.set('search', name);
     wikidataSearch.search(function(result, error) {
         var id = result.results[0].id;
-        callback(id);
+        callbackQuery(id, sessionAttributes, callback);
     });
 }
 
-function doWhoIsLeadingQuery(id) {
-    var query = WHO_IS_LEADING_QUERY.replace("???", id);
-    client.get( SPARQL_ENDPOINT + query, parseWhoIsLeadingResponse);
-}
+function doWhoIsLeadingQuery(id, sessionAttributes, callback) {
+    var query = WHO_IS_LEADING_QUERY.replace("[ITEM_ID]", id);
+    client.get( SPARQL_ENDPOINT + query, function(data, response) {
+        var textChunk = JSON.parse(decoder.write(data));
+        var resultURI = textChunk.results.bindings[0].headOfGovernment.value;
+        var resultId = resultURI.substring(resultURI.search('Q'), resultURI.length);
 
-function parseWhoIsLeadingResponse(data, response) {
-    var textChunk = JSON.parse(decoder.write(data));
-    var resultURI = textChunk.results.bindings[0].headOfGovernment.value;
-    var resultId = resultURI.substring(resultURI.search('Q'), resultURI.length);
-
-    wikidataSearch.set('search', resultId);
-    wikidataSearch.search(function(result, error) {
-        var label = result.results[0].label;
-        speechOutput = label + " is leading " + name;
-        console.log(speechOutput);
-        callback(sessionAttributes,
-            buildSpeechletResponse(cardTitle, speechOutput, repromptText, shouldEndSession));
+        wikidataSearch.set('search', resultId);
+        wikidataSearch.search(function(result, error) {
+            var label = result.results[0].label;
+            speechOutput = label;
+            console.log(speechOutput);
+            callback({},
+                buildSpeechletResponse("", speechOutput, "", false));
+        });
     });
 }
-
-
-//TODO FIX
-function buildBirthdateResponse(sessionAttributes, cardTitle, name, birthdate, callback) {
-    speechOutput = name + " was born here: " + birthdate;
-    console.log(speechOutput);
-    repromptText = "Do you want to know something different about this person?";
-    shouldEndSession = false;
-
-    console.log(speechOutput);
-}
-
-
 
 // --------------- Helpers that build all of the responses -----------------------
 
