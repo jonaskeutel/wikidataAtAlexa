@@ -22,7 +22,7 @@ var SPARQL_ENDPOINT = "https://query.wikidata.org/bigdata/namespace/wdq/sparql?f
 // etc.) The JSON body of the request is provided in the event parameter.
 exports.handler = function (event, context) {
     try {
-        console.log("event.session.application.applicationId=" + event.session.application.applicationId);
+        //console.log("event.session.application.applicationId=" + event.session.application.applicationId);
 
         /**
          * Uncomment this if statement and populate with your skill's application ID to
@@ -63,16 +63,16 @@ exports.handler = function (event, context) {
  * Called when the session starts.
  */
 function onSessionStarted(sessionStartedRequest, session) {
-    console.log("onSessionStarted requestId=" + sessionStartedRequest.requestId +
-        ", sessionId=" + session.sessionId);
+    //console.log("onSessionStarted requestId=" + sessionStartedRequest.requestId +
+    //    ", sessionId=" + session.sessionId);
 }
 
 /**
  * Called when the user launches the skill without specifying what they want.
  */
 function onLaunch(launchRequest, session, callback) {
-    console.log("onLaunch requestId=" + launchRequest.requestId +
-        ", sessionId=" + session.sessionId);
+    //console.log("onLaunch requestId=" + launchRequest.requestId +
+    //    ", sessionId=" + session.sessionId);
 
     // Dispatch to your skill's launch.
     getWelcomeResponse(callback);
@@ -82,8 +82,8 @@ function onLaunch(launchRequest, session, callback) {
  * Called when the user specifies an intent for this skill.
  */
 function onIntent(intentRequest, session, callback) {
-    console.log("onIntent requestId=" + intentRequest.requestId +
-        ", sessionId=" + session.sessionId);
+    //console.log("onIntent requestId=" + intentRequest.requestId +
+    //    ", sessionId=" + session.sessionId);
 
     var intent = intentRequest.intent,
         intentName = intentRequest.intent.name;
@@ -103,8 +103,8 @@ function onIntent(intentRequest, session, callback) {
  * Is not called when the skill returns shouldEndSession=true.
  */
 function onSessionEnded(sessionEndedRequest, session) {
-    console.log("onSessionEnded requestId=" + sessionEndedRequest.requestId +
-        ", sessionId=" + session.sessionId);
+    //console.log("onSessionEnded requestId=" + sessionEndedRequest.requestId +
+    //    ", sessionId=" + session.sessionId);
     // Add cleanup logic here
 }
 
@@ -135,7 +135,8 @@ function whoIsLeading(intent, session, callback) {
     var speechOutput = "";
 
     if (!nameSlot) {
-        console.log("I didn't get the name, sorry.");
+        callback({},
+                buildSpeechletResponse("", "I didn't get the name, sorry.", "Please try it again", false));
         return;
     }
 
@@ -149,6 +150,7 @@ function whoIsLeading(intent, session, callback) {
 function getWikidataId(name, sessionAttributes, callbackQuery, callback) {
     wikidataSearch.set('search', name);
     wikidataSearch.search(function(result, error) {
+        console.log("Results for ", name, result.results);
         var id = result.results[0].id;
         callbackQuery(id, sessionAttributes, callback);
     });
@@ -157,15 +159,22 @@ function getWikidataId(name, sessionAttributes, callbackQuery, callback) {
 function doWhoIsLeadingQuery(id, sessionAttributes, callback) {
     var query = WHO_IS_LEADING_QUERY.replace("[ITEM_ID]", id);
     client.get( SPARQL_ENDPOINT + query, function(data, response) {
-        var textChunk = JSON.parse(decoder.write(data));
-        var resultURI = textChunk.results.bindings[0].headOfGovernment.value;
+        var jsonResponse = JSON.parse(decoder.write(data));
+        if (jsonResponse.results.bindings.length == 0) {
+            speechOutput = "Sorry, I didn't find an answer on Wikidata. Maybe its data is incomplete. " +
+                            "You would do me a big favour if you could look it up and add it to Wikidata."
+            callback({},
+                buildSpeechletResponse("", speechOutput, "", false));
+            return;
+        }
+
+        var resultURI = jsonResponse.results.bindings[0].headOfGovernment.value;
         var resultId = resultURI.substring(resultURI.search('Q'), resultURI.length);
 
         wikidataSearch.set('search', resultId);
         wikidataSearch.search(function(result, error) {
             var label = result.results[0].label;
             speechOutput = label;
-            console.log(speechOutput);
             callback({},
                 buildSpeechletResponse("", speechOutput, "", false));
         });
