@@ -11,18 +11,18 @@ var WHO_IS_LEADING_QUERY = "PREFIX wd: <http://www.wikidata.org/entity/> " +
             "PREFIX p: <http://www.wikidata.org/prop/> " +
             "PREFIX q: <http://www.wikidata.org/prop/qualifier/> " +
             "PREFIX v: <http://www.wikidata.org/prop/statement/> " +
-            "SELECT DISTINCT ?headOfGovernment WHERE { " +
+            "SELECT DISTINCT ?leading WHERE { " +
             "wd:??? p:P6 ?statement . " +
-            "?statement v:P6 ?headOfGovernment . " +
+            "?statement v:P6 ?leading . " +
             "FILTER NOT EXISTS { ?statement q:P582 ?x } " +
             "}";
 var WHO_IS_LEADING_STATE_QUERY = "PREFIX wd: <http://www.wikidata.org/entity/> " +
             "PREFIX p: <http://www.wikidata.org/prop/> " +
             "PREFIX q: <http://www.wikidata.org/prop/qualifier/> " +
             "PREFIX v: <http://www.wikidata.org/prop/statement/> " +
-            "SELECT DISTINCT ?headOfState WHERE { " +
+            "SELECT DISTINCT ?leading WHERE { " +
             "wd:??? p:P35 ?statement . " +
-            "?statement v:P35 ?headOfState . " +
+            "?statement v:P35 ?leading . " +
             "FILTER NOT EXISTS { ?statement q:P582 ?x } " +
             "}";
 var SPARQL_ENDPOINT = "https://query.wikidata.org/bigdata/namespace/wdq/sparql?format=json&query=";
@@ -84,40 +84,8 @@ function whoIsLeading(intent, session, callback) {
     getWikidataId(name, doWhoIsLeadingQuery);
 }
 
-//TODO: FIX HOLE METHOD
-function getBirthdate(intent, session, callback) {
-    var cardTitle = intent.name;
-    var nameSlot = intent.slots.Name;
-    var repromptText = "";
-    var sessionAttributes = {};
-    var shouldEndSession = false;
-    var speechOutput = "";
-
-    if (nameSlot) {
-        var name = nameSlot.value;
-
-        var id = result.results[0].id;
-        var label = result.results[0].label;
-        wikidataSearch.getEntities([id], true, function(result, err) {
-            var claims = result.entities[0].claims;
-            var dateOfBirth;
-            for (var i = 0; i < claims.length; i++) {
-                if (claims[i].property === "place of birth") {
-                    dateOfBirth = claims[i].value;
-                    break;
-                }
-            }
-            buildBirthdateResponse(sessionAttributes, cardTitle, label, dateOfBirth, callback);
-        });
-    } else {
-        speechOutput = "I didn't get the name of the person. Please try again";
-        repromptText = "You can ask: When is the birthdate of Barack Obama";
-        console.log(speechOutput);
-    }
-}
 
 // --------------- Custom functions -----------------------
-
 
 function getWikidataId(name, callback) {
     wikidataSearch.set('search', name);

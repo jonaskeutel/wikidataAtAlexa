@@ -6,17 +6,32 @@ var StringDecoder = require('string_decoder').StringDecoder;
 var decoder = new StringDecoder('utf8');
 
 // Constants
-var WHO_IS_LEADING_QUERY = "PREFIX wd: <http://www.wikidata.org/entity/> " +
-            "PREFIX p: <http://www.wikidata.org/prop/> " +
-            "PREFIX q: <http://www.wikidata.org/prop/qualifier/> " +
-            "PREFIX v: <http://www.wikidata.org/prop/statement/> " +
-            "SELECT DISTINCT ?headOfGovernment WHERE { " +
+var WHO_IS_LEADING_QUERY = "SELECT DISTINCT ?headOfGovernment WHERE { " +
             "wd:[ITEM_ID] p:P6 ?statement . " +
             "?statement v:P6 ?headOfGovernment . " +
             "FILTER NOT EXISTS { ?statement q:P582 ?x } " +
             "}";
+var DATE_OF_BIRTH_QUERY = "SELECT ?date WHERE { " +
+            "   wd:[ITEM_ID] wdt:P569 ?date . " +
+            "}";
+var BIGGEST_CITIES_WITH_FEMALE_MAYOR_QUERY = "SELECT DISTINCT ?city ?mayor WHERE { " +
+            "  ?city wdt:P31/wdt:P279* wd:Q515 . " +
+            "  ?city wdt:P17 wd:[ITEM_ID] . " +
+            "  ?city p:P6 ?statement . " +
+            "  ?statement v:P6 ?mayor . " +
+            "  ?mayor wdt:P21 wd:Q6581072 . " +
+            "  FILTER NOT EXISTS { ?statement q:P582 ?x } " +
+            "  ?city wdt:P1082 ?population . " +
+            " } ORDER BY DESC(?population) LIMIT [NUMBER]";
+
 var SPARQL_ENDPOINT = "https://query.wikidata.org/bigdata/namespace/wdq/sparql?format=json&query=";
 
+// TODO (BIG ONE): Make label lookup work!!!
+var ALL_PREFIXES = "PREFIX wd: <http://www.wikidata.org/entity/>  " +
+            "PREFIX wdt: <http://www.wikidata.org/prop/direct/> " +
+            "PREFIX p: <http://www.wikidata.org/prop/> " +
+            "PREFIX q: <http://www.wikidata.org/prop/qualifier/> " +
+            "PREFIX v: <http://www.wikidata.org/prop/statement/> ";
 
 // Route the incoming request based on type (LaunchRequest, IntentRequest,
 // etc.) The JSON body of the request is provided in the event parameter.
@@ -24,15 +39,9 @@ exports.handler = function (event, context) {
     try {
         //console.log("event.session.application.applicationId=" + event.session.application.applicationId);
 
-        /**
-         * Uncomment this if statement and populate with your skill's application ID to
-         * prevent someone else from configuring a skill that sends requests to this function.
-         */
-        /*
-        if (event.session.application.applicationId !== "amzn1.echo-sdk-ams.app.[unique-value-here]") {
+        if (event.session.application.applicationId !== "amzn1.echo-sdk-ams.app.8384313e-ff45-4ee3-aca5-ef42c1f09739") {
              context.fail("Invalid Application ID");
         }
-        */
 
         if (event.session.new) {
             onSessionStarted({requestId: event.request.requestId}, event.session);
@@ -97,7 +106,8 @@ function onIntent(intentRequest, session, callback) {
         } else {
            rickAstley(intent, session, callback); 
         }
-        
+    } else if ("BiggestCitiesWithFemaleMayorIntent" === intentName) {
+        biggestCitiesWithFemaleMayor(intent, session, callback);    
     } else if ("HelpIntent" === intentName) {
         getWelcomeResponse(callback);
     } else {
@@ -140,13 +150,27 @@ function rickAstley(intent, session, callback) {
 }
 
 function getBirthdate(intent, session, callback) {
-    name = session.attributes.person.name;
-    callback({},
-        buildSpeechletResponse("This is to do", 
-                                "I have to figure out when " + name + " was born",
-                                "", 
-                                false)
-        );
+    var sessionAttributes = session.attributes;
+    var name = sessionAttributes.person.name;
+    var id = sessionAttributes.person.id;
+    var query = DATE_OF_BIRTH_QUERY.replace("[ITEM_ID]", id);
+    client.get( SPARQL_ENDPOINT + ALL_PREFIXES + query, function(data, response) {
+        var jsonResponse = JSON.parse(decoder.write(data));
+        if (jsonResponse.results.bindings.length == 0) {
+            speechOutput = "Sorry, I didn't find an answer on Wikidata. Maybe its data is incomplete. " +
+                            "You would do me a big favour if you could look it up and add it to Wikidata."
+            callback(sessionAttributes,
+                buildSpeechletResponse("", speechOutput, "", false));
+            return;
+        }
+
+        var resultDate = jsonResponse.results.bindings[0].date.value;
+        resultDate = resultDate.substring(0, resultDate.search('T'));
+        var speechOutput = name + " was born on " + resultDate;
+        callback(sessionAttributes,
+            buildSpeechletResponse("", speechOutput, "", false));
+    });
+    
 }
 
 function whoIsLeading(intent, session, callback) {
@@ -167,13 +191,43 @@ function whoIsLeading(intent, session, callback) {
     getWikidataId(name, sessionAttributes, doWhoIsLeadingQuery, callback);
 }
 
+function biggestCitiesWithFemaleMayor(intent, session, callback) {
+    var cardTitle = "Biggest Cities:";
+    var countrySlot = intent.slots.Country;
+    var numberSlot = intent.slots.Number;
+    var repromptText = "";
+    var sessionAttributes = {};
+    var shouldEndSession = false;
+    var speechOutput = "";
+
+    // TODO: Make world the fallback
+    if (!countrySlot) {
+        callback({},
+                buildSpeechletResponse("", "I didn't get country. Could you please try again?", "Please try it again", false));
+        return;
+    }
+
+    var number;
+    if (!numberSlot) {
+        number =  3; // default to 3
+    } else {
+        number = numberSlot.value;
+    }
+    console.log("Trying to clean variable");
+    cleanVariable(countrySlot.value, function(country) {   
+        console.log("Successfully cleaned varibale");     
+        sessionAttributes.number = number; //TODO: Find a better way to keep track of variables OR make it consitent this way
+        getWikidataId(country, sessionAttributes, doBiggestCityWithFemaleMayorQuery, callback);
+    });
+}
+
 // --------------- Custom functions -----------------------
 
 
 function getWikidataId(place, sessionAttributes, callbackQuery, callback) {
     wikidataSearch.set('search', place);
     wikidataSearch.search(function(result, error) {
-        console.log("Results for ", place, result.results);
+        console.log("Inside getWikidataId; results for ", place, result.results);
         var id = result.results[0].id;
         callbackQuery(id, place, sessionAttributes, callback);
     });
@@ -181,7 +235,7 @@ function getWikidataId(place, sessionAttributes, callbackQuery, callback) {
 
 function doWhoIsLeadingQuery(id, place, sessionAttributes, callback) {
     var query = WHO_IS_LEADING_QUERY.replace("[ITEM_ID]", id);
-    client.get( SPARQL_ENDPOINT + query, function(data, response) {
+    client.get( SPARQL_ENDPOINT + ALL_PREFIXES + query, function(data, response) {
         var jsonResponse = JSON.parse(decoder.write(data));
         if (jsonResponse.results.bindings.length == 0) {
             speechOutput = "Sorry, I didn't find an answer on Wikidata. Maybe its data is incomplete. " +
@@ -206,6 +260,53 @@ function doWhoIsLeadingQuery(id, place, sessionAttributes, callback) {
                 buildSpeechletResponse("", speechOutput, "", false));
         });
     });
+}
+
+function doBiggestCityWithFemaleMayorQuery(id, place, sessionAttributes, callback) {
+    var query = BIGGEST_CITIES_WITH_FEMALE_MAYOR_QUERY.replace("[ITEM_ID]", id).replace("[NUMBER]", sessionAttributes.number);
+    client.get( SPARQL_ENDPOINT + ALL_PREFIXES + query, function(data, response) {
+        var jsonResponse = JSON.parse(decoder.write(data));
+        console.log(jsonResponse);
+        if (jsonResponse.results.bindings.length == 0) {
+            speechOutput = "Sorry, I didn't find an answer on Wikidata. Maybe its data is incomplete. " +
+                            "You would do me a big favour if you could look it up and add it to Wikidata."
+            callback(sessionAttributes,
+                buildSpeechletResponse("", speechOutput, "", false));
+            return;
+        }
+
+        var resultArray = jsonResponse.results.bindings;
+        var cityIdArray = [];
+        for (var i = 0; i < resultArray.length; i++) {
+            cityIdArray[i] = resultArray[i].city.value.substring(resultArray[i].city.value.search('Q'), resultArray[i].city.value.length);
+        };
+        console.log(cityIdArray);
+        wikidataSearch.getEntities(cityIdArray, false, function(result, error) {
+            speechOutput = "The " + sessionAttributes.number + " biggest cities in " + place + " that are run by a female are ";
+            var cityLabelArray = [];
+
+            for (var i = 0; i < result.entities.length; i++) {
+                cityLabelArray[i] = result.entities[i].label;
+            };
+
+            for (var i = 0; i < cityLabelArray.length - 1; i++) {
+                speechOutput += cityLabelArray[i] + ", ";
+            };
+
+            speechOutput += "and " + cityLabelArray[cityLabelArray.length - 1];
+            
+            callback(sessionAttributes,
+                buildSpeechletResponse("", speechOutput, "", false));
+        });
+    });
+}
+
+// --------------- Custom helpers -----------------------
+function cleanVariable(val, callback) {
+    console.log(val);
+    val = val.replace(/ /g,'').replace(/\./g,'').replace('the','');
+    console.log("Inside clean variable: ", val);
+    callback(val);
 }
 
 // --------------- Helpers that build all of the responses -----------------------
