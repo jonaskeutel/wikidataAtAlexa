@@ -4,34 +4,7 @@ var Client = require('node-rest-client').Client;
 var client = new Client();
 var StringDecoder = require('string_decoder').StringDecoder;
 var decoder = new StringDecoder('utf8');
-
-// Constants
-var WHO_IS_LEADING_QUERY = "SELECT DISTINCT ?headOfGovernment WHERE { " +
-            "wd:[ITEM_ID] p:P6 ?statement . " +
-            "?statement v:P6 ?headOfGovernment . " +
-            "FILTER NOT EXISTS { ?statement q:P582 ?x } " +
-            "}";
-var DATE_OF_BIRTH_QUERY = "SELECT ?date WHERE { " +
-            "   wd:[ITEM_ID] wdt:P569 ?date . " +
-            "}";
-var BIGGEST_CITIES_WITH_FEMALE_MAYOR_QUERY = "SELECT DISTINCT ?city ?mayor WHERE { " +
-            "  ?city wdt:P31/wdt:P279* wd:Q515 . " +
-            "  ?city wdt:P17 wd:[ITEM_ID] . " +
-            "  ?city p:P6 ?statement . " +
-            "  ?statement v:P6 ?mayor . " +
-            "  ?mayor wdt:P21 wd:Q6581072 . " +
-            "  FILTER NOT EXISTS { ?statement q:P582 ?x } " +
-            "  ?city wdt:P1082 ?population . " +
-            " } ORDER BY DESC(?population) LIMIT [NUMBER]";
-
-var SPARQL_ENDPOINT = "https://query.wikidata.org/bigdata/namespace/wdq/sparql?format=json&query=";
-
-// TODO (BIG ONE): Make label lookup work!!!
-var ALL_PREFIXES = "PREFIX wd: <http://www.wikidata.org/entity/>  " +
-            "PREFIX wdt: <http://www.wikidata.org/prop/direct/> " +
-            "PREFIX p: <http://www.wikidata.org/prop/> " +
-            "PREFIX q: <http://www.wikidata.org/prop/qualifier/> " +
-            "PREFIX v: <http://www.wikidata.org/prop/statement/> ";
+var querystring = require("querystring");
 
 // Route the incoming request based on type (LaunchRequest, IntentRequest,
 // etc.) The JSON body of the request is provided in the event parameter.
@@ -154,7 +127,7 @@ function getBirthdate(intent, session, callback) {
     var name = sessionAttributes.person.name;
     var id = sessionAttributes.person.id;
     var query = DATE_OF_BIRTH_QUERY.replace("[ITEM_ID]", id);
-    client.get( SPARQL_ENDPOINT + ALL_PREFIXES + query, function(data, response) {
+    client.get( SPARQL_ENDPOINT + querystring.stringify({query: ALL_PREFIXES + query}), function(data, response) {
         var jsonResponse = JSON.parse(decoder.write(data));
         if (jsonResponse.results.bindings.length == 0) {
             speechOutput = "Sorry, I didn't find an answer on Wikidata. Maybe its data is incomplete. " +
@@ -235,7 +208,9 @@ function getWikidataId(place, sessionAttributes, callbackQuery, callback) {
 
 function doWhoIsLeadingQuery(id, place, sessionAttributes, callback) {
     var query = WHO_IS_LEADING_QUERY.replace("[ITEM_ID]", id);
-    client.get( SPARQL_ENDPOINT + ALL_PREFIXES + query, function(data, response) {
+    var url = SPARQL_ENDPOINT + querystring.stringify({query: ALL_PREFIXES + query});
+    console.log(url);
+    client.get( url, function(data, response) {
         var jsonResponse = JSON.parse(decoder.write(data));
         if (jsonResponse.results.bindings.length == 0) {
             speechOutput = "Sorry, I didn't find an answer on Wikidata. Maybe its data is incomplete. " +
@@ -264,7 +239,7 @@ function doWhoIsLeadingQuery(id, place, sessionAttributes, callback) {
 
 function doBiggestCityWithFemaleMayorQuery(id, place, sessionAttributes, callback) {
     var query = BIGGEST_CITIES_WITH_FEMALE_MAYOR_QUERY.replace("[ITEM_ID]", id).replace("[NUMBER]", sessionAttributes.number);
-    client.get( SPARQL_ENDPOINT + ALL_PREFIXES + query, function(data, response) {
+    client.get( SPARQL_ENDPOINT + querystring.stringify({query: ALL_PREFIXES + query}), function(data, response) {
         var jsonResponse = JSON.parse(decoder.write(data));
         console.log(jsonResponse);
         if (jsonResponse.results.bindings.length == 0) {
