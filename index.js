@@ -4,14 +4,14 @@ var Client = require('node-rest-client').Client;
 var client = new Client();
 var StringDecoder = require('string_decoder').StringDecoder;
 var decoder = new StringDecoder('utf8');
-var querystring = require("querystring");
+var queryBuilder = require('./queryBuilder');
 
 // Route the incoming request based on type (LaunchRequest, IntentRequest,
 // etc.) The JSON body of the request is provided in the event parameter.
 exports.handler = function (event, context) {
     try {
         //console.log("event.session.application.applicationId=" + event.session.application.applicationId);
-
+        console.log(event.request.type);
         if (event.session.application.applicationId !== "amzn1.echo-sdk-ams.app.8384313e-ff45-4ee3-aca5-ef42c1f09739") {
              context.fail("Invalid Application ID");
         }
@@ -19,14 +19,16 @@ exports.handler = function (event, context) {
         if (event.session.new) {
             onSessionStarted({requestId: event.request.requestId}, event.session);
         }
-
+        console.log("behind new");
         if (event.request.type === "LaunchRequest") {
+            console.log("In LaunchRequest");
             onLaunch(event.request,
                 event.session,
                 function callback(sessionAttributes, speechletResponse) {
                     context.succeed(buildResponse(sessionAttributes, speechletResponse));
                 });
         } else if (event.request.type === "IntentRequest") {
+            console.log("In IntentRequest");
             onIntent(event.request,
                 event.session,
                 function callback(sessionAttributes, speechletResponse) {
@@ -45,16 +47,16 @@ exports.handler = function (event, context) {
  * Called when the session starts.
  */
 function onSessionStarted(sessionStartedRequest, session) {
-    //console.log("onSessionStarted requestId=" + sessionStartedRequest.requestId +
-    //    ", sessionId=" + session.sessionId);
+    console.log("onSessionStarted requestId=" + sessionStartedRequest.requestId +
+        ", sessionId=" + session.sessionId);
 }
 
 /**
  * Called when the user launches the skill without specifying what they want.
  */
 function onLaunch(launchRequest, session, callback) {
-    //console.log("onLaunch requestId=" + launchRequest.requestId +
-    //    ", sessionId=" + session.sessionId);
+    console.log("onLaunch requestId=" + launchRequest.requestId +
+        ", sessionId=" + session.sessionId);
 
     // Dispatch to your skill's launch.
     getWelcomeResponse(callback);
@@ -64,21 +66,23 @@ function onLaunch(launchRequest, session, callback) {
  * Called when the user specifies an intent for this skill.
  */
 function onIntent(intentRequest, session, callback) {
-    //console.log("onIntent requestId=" + intentRequest.requestId +
-    //    ", sessionId=" + session.sessionId);
+    console.log("onIntent requestId=" + intentRequest.requestId +
+        ", sessionId=" + session.sessionId);
 
     var intent = intentRequest.intent,
         intentName = intentRequest.intent.name;
+
+    console.log("In onIntent: ", intentName);
 
     // Dispatch to your skill's intent handlers
     if ("WhoIsLeadingIntent" === intentName) {
         whoIsLeading(intent, session, callback);
     } else if ("BirthdateIntent" === intentName) {
-        if (session.attributes && session.attributes.person) {
-            getBirthdate(intent, session, callback);
-        } else {
-           rickAstley(intent, session, callback); 
-        }
+        //if (session.attributes && session.attributes.person) {
+        getBirthdate(intent, session, callback);
+        //} else {
+        //   rickAstley(intent, session, callback); 
+        //}
     } else if ("BiggestCitiesWithFemaleMayorIntent" === intentName) {
         biggestCitiesWithFemaleMayor(intent, session, callback);    
     } else if ("HelpIntent" === intentName) {
@@ -113,21 +117,20 @@ function getWelcomeResponse(callback) {
 
 }
 
-function rickAstley(intent, session, callback) {
+/*function rickAstley(intent, session, callback) {
     callback({},
         buildSpeechletResponse("Fool you!", 
                                 "Never gonna give you up, never gonna let you down, Never gonna run around and . desert you . Never gonna make you cry, never gonna say goodbye . Never gonna tell a lie . and hurt you", 
                                 "Sorry, maybe you should try asking who is leading China.", 
                                 false)
         );
-}
+}*/
 
 function getBirthdate(intent, session, callback) {
     var sessionAttributes = session.attributes;
     var name = sessionAttributes.person.name;
     var id = sessionAttributes.person.id;
-    var query = DATE_OF_BIRTH_QUERY.replace("[ITEM_ID]", id);
-    client.get( SPARQL_ENDPOINT + querystring.stringify({query: ALL_PREFIXES + query}), function(data, response) {
+    client.get( queryBuilder.dateOfBirth(id), function(data, response) {
         var jsonResponse = JSON.parse(decoder.write(data));
         if (jsonResponse.results.bindings.length == 0) {
             speechOutput = "Sorry, I didn't find an answer on Wikidata. Maybe its data is incomplete. " +
@@ -176,7 +179,7 @@ function biggestCitiesWithFemaleMayor(intent, session, callback) {
     // TODO: Make world the fallback
     if (!countrySlot) {
         callback({},
-                buildSpeechletResponse("", "I didn't get country. Could you please try again?", "Please try it again", false));
+                buildSpeechletResponse("", "I didn't get the country. Could you please try again?", "Please try it again", false));
         return;
     }
 
@@ -200,17 +203,14 @@ function biggestCitiesWithFemaleMayor(intent, session, callback) {
 function getWikidataId(place, sessionAttributes, callbackQuery, callback) {
     wikidataSearch.set('search', place);
     wikidataSearch.search(function(result, error) {
-        console.log("Inside getWikidataId; results for ", place, result.results);
         var id = result.results[0].id;
+        console.log("Inside getWikidataId; result for ", place, id);
         callbackQuery(id, place, sessionAttributes, callback);
     });
 }
 
 function doWhoIsLeadingQuery(id, place, sessionAttributes, callback) {
-    var query = WHO_IS_LEADING_QUERY.replace("[ITEM_ID]", id);
-    var url = SPARQL_ENDPOINT + querystring.stringify({query: ALL_PREFIXES + query});
-    console.log(url);
-    client.get( url, function(data, response) {
+    client.get( queryBuilder.whoIsLeading(id), function(data, response) {
         var jsonResponse = JSON.parse(decoder.write(data));
         if (jsonResponse.results.bindings.length == 0) {
             speechOutput = "Sorry, I didn't find an answer on Wikidata. Maybe its data is incomplete. " +
@@ -238,8 +238,7 @@ function doWhoIsLeadingQuery(id, place, sessionAttributes, callback) {
 }
 
 function doBiggestCityWithFemaleMayorQuery(id, place, sessionAttributes, callback) {
-    var query = BIGGEST_CITIES_WITH_FEMALE_MAYOR_QUERY.replace("[ITEM_ID]", id).replace("[NUMBER]", sessionAttributes.number);
-    client.get( SPARQL_ENDPOINT + querystring.stringify({query: ALL_PREFIXES + query}), function(data, response) {
+    client.get( queryBuilder.femaleMayors(id, sessionAttributes.number), function(data, response) {
         var jsonResponse = JSON.parse(decoder.write(data));
         console.log(jsonResponse);
         if (jsonResponse.results.bindings.length == 0) {

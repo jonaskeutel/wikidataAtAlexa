@@ -1,5 +1,8 @@
 var querystring = require("querystring");
 
+var DATE_OF_BIRTH_QUERY = "SELECT ?date WHERE { " +
+            "   wd:[ITEM_ID] wdt:P569 ?date . " +
+            "}";
 var WHO_IS_LEADING_QUERY = "SELECT DISTINCT ?headOfGovernment WHERE { " +
             "wd:[ITEM_ID] p:P6 ?statement . " +
             "?statement v:P6 ?headOfGovernment . " +
@@ -18,25 +21,25 @@ var BIGGEST_CITIES_WITH_FEMALE_MAYOR_QUERY = "SELECT DISTINCT ?city ?cityLabel ?
 
 var SPARQL_ENDPOINT = "https://query.wikidata.org/bigdata/namespace/wdq/sparql?format=json&";
 
-
-function QueryBuilder(useJson) {
-	useJson = typeof a !== "undefined" ? a : true;
-	this.endpoint = "https://query.wikidata.org/bigdata/namespace/wdq/sparql?";
-	if (useJson)
-		this.endpoint += "format=json&";
-	this.allPrefixes = "PREFIX wikibase: <http://wikiba.se/ontology#>" + 
+var ALL_PREFIXES = "PREFIX wikibase: <http://wikiba.se/ontology#>" + 
             "PREFIX wd: <http://www.wikidata.org/entity/>  " +
             "PREFIX wdt: <http://www.wikidata.org/prop/direct/> " +
             "PREFIX p: <http://www.wikidata.org/prop/> " +
             "PREFIX q: <http://www.wikidata.org/prop/qualifier/> " +
             "PREFIX v: <http://www.wikidata.org/prop/statement/> ";
-    this.dateOfBirth = "SELECT ?date WHERE { " +
-            "   wd:[ITEM_ID] wdt:P569 ?date . " +
-            "}";
-}
 
-QueryBuilder.prototype.dateOfBirth = function() {
-	return querystring.stringify({query: this.allPrefixes + this.dateOfBirth});
-}
 
-var q = new QueryBuilder();
+exports.dateOfBirth = function(itemId) {
+      var dateOfBirthQuery = DATE_OF_BIRTH_QUERY.replace("[ITEM_ID]", itemId);
+	return SPARQL_ENDPOINT + querystring.stringify({query: ALL_PREFIXES + dateOfBirthQuery});
+};
+
+exports.femaleMayors = function(itemId, number) {
+      var mayorQuery = BIGGEST_CITIES_WITH_FEMALE_MAYOR_QUERY.replace("[ITEM_ID]", itemId).replace("[NUMBER]", number);
+      return SPARQL_ENDPOINT + querystring.stringify({query: ALL_PREFIXES + mayorQuery});  
+};
+
+exports.whoIsLeading = function(itemId) {
+      var leadingQuery = WHO_IS_LEADING_QUERY.replace("[ITEM_ID]", itemId);
+      return SPARQL_ENDPOINT + querystring.stringify({query: ALL_PREFIXES + leadingQuery});
+}
